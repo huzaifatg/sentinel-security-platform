@@ -25,6 +25,26 @@ def test_auth_and_validation() -> None:
     assert client.post("/api/v1/auth/register", json={"email": "bad", "password": "short"}).status_code == 422
 
 
+def test_risk_assessment_returns_findings_and_score() -> None:
+    token = register("risk@example.com")
+    response = client.post(
+        "/api/v1/risk/assess",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"asset_id": "laptop-1", "signals": {"disk_encryption_disabled": True, "mfa_disabled": True}},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["risk_score"] == 40
+    assert body["security_score"] == 60
+    assert body["severity"] == "medium"
+    assert {finding["rule"] for finding in body["findings"]} == {"disk_encryption_disabled", "mfa_disabled"}
+
+
+def test_risk_assessment_requires_authentication() -> None:
+    response = client.post("/api/v1/risk/assess", json={"asset_id": "laptop-1", "signals": {}})
+    assert response.status_code == 401
+
+
 def test_device_ownership_and_telemetry() -> None:
     alice = register("owner@example.com")
     bob = register("other@example.com")

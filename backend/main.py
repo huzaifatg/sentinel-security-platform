@@ -1,4 +1,5 @@
 import json
+from dataclasses import asdict
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +12,8 @@ from .config import get_settings
 from .database import Base, engine, get_db
 from .models import Device, TelemetryEvent, User
 from .schemas import DeviceCreate, DeviceRead, TelemetryCreate, TelemetryRead, Token, UserCreate, UserRead
+from .risk import assess
+from .risk_schemas import RiskAssessmentRead, RiskAssessmentRequest
 
 settings = get_settings()
 app = FastAPI(title=settings.app_name, version="0.2.0")
@@ -95,3 +98,17 @@ def list_telemetry(device_id: int, user: User = Depends(get_current_user), db: S
     device = owned_device(device_id, user, db)
     events = db.scalars(select(TelemetryEvent).where(TelemetryEvent.device_id == device.id).order_by(TelemetryEvent.id)).all()
     return [TelemetryRead(id=e.id, device_id=e.device_id, event_type=e.event_type, payload=json.loads(e.payload), observed_at=e.observed_at) for e in events]
+
+
+@app.post("/api/v1/risk/assess", response_model=RiskAssessmentRead)
+def assess_risk(payload: RiskAssessmentRequest, user: User = Depends(get_current_user)) -> RiskAssessmentRead:
+    risk_score, findings = assess(payload.asset_id, payload.signals)
+    from .risk import severity_for
+    severity = severity_for(risk_score)
+    return RiskAssessmentRead(
+        risk_score=risk_score,
+        security_score=100 - risk_score,
+        severity=severity,
+        findings=[asdict(finding) for finding in findings],
+    )
+

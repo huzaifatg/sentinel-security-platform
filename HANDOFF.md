@@ -20,6 +20,12 @@ Preserve the documentation contract and the distinction between planned services
 
 Set `DATABASE_URL` to a PostgreSQL SQLAlchemy URL and run `alembic upgrade head` from the project root. Then run the backend tests with that environment and add a PostgreSQL integration test run before declaring persistence verified. The local SQLite default exists only to make isolated API tests runnable without pretending PostgreSQL is connected.
 
+## Phase 3 result
+
+Added `backend/risk.py` as a deterministic, pure risk engine and `POST /api/v1/risk/assess` as an authenticated API boundary. The endpoint returns a capped 0–100 risk score, inverse security score, severity band, affected asset, evidence, timestamp, contribution, and recommended action for each recognized signal. Unknown signals are ignored and duplicate submissions are deduplicated.
+
+The risk response is intentionally computed per request and is not presented as persisted database state. PostgreSQL remains configurable through `DATABASE_URL`; persistence and Alembic behavior must be verified against a running PostgreSQL instance before production claims. The current shell lacks `pytest`, so backend tests are not claimed as passing in this handoff.
+
 ## Next task
 
-Verify this backend against a running PostgreSQL database, then add risk logic only after the persistence and authorization boundary is confirmed.
+Install the pinned Python requirements, run `pytest backend/test_api.py`, then verify `alembic upgrade head` and the API against a running PostgreSQL database before adding persisted findings, anomaly detection, or simulator workflows.
