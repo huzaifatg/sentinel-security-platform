@@ -7,4 +7,7 @@
 - `npm run build` — passed with Next.js 16 production output.
 - `GET /api/health` — passed; returned `status: ok`, `web: ok`, `database: not_configured`, and `graph: not_configured`.
 
-No backend, database, graph, authentication, or ML tests exist yet. Do not interpret the current UI as evidence that those services work.
+- `pytest backend/test_api.py` — passed with SQLite-backed registration, login, bearer authentication, ownership enforcement, validation, and telemetry coverage.
+- `alembic upgrade head` against a running PostgreSQL instance — not run; PostgreSQL persistence is intentionally unverified in this environment.
+
+The backend tests do not prove PostgreSQL persistence, graph storage, telemetry collection, risk scoring, or ML behavior.

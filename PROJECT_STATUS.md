@@ -1,10 +1,9 @@
 # Project status
 
-- Current phase: Phase 1 — application shell and visual foundation
-- Branch: `v0/phase-1-foundation`; Phase 1 changes are verified and ready to synchronize.
-- Completed: all four Phase 1 acceptance subtasks — Next.js/TypeScript project foundation, responsive overview shell, project/API documentation and handoff records, and verified `GET /api/health`.
-- Verification: `npm run typecheck` passed; `npm run build` passed; `GET /api/health` returned `status: ok`, `web: ok`, `database: not_configured`, and `graph: not_configured`.
-- Incomplete by design: authentication, PostgreSQL, Neo4j, FastAPI, telemetry, risk engine, recommendations, anomaly model, simulator, and API integrations.
-- Known bugs: none observed during Phase 1 verification.
-- Current blockers: no configured database, graph service, backend runtime, or user data source.
-- Exact next task: add the Python/FastAPI service and PostgreSQL-backed authentication with ownership-aware core models. Acceptance requires verified persistence, secure auth, and tests for malformed input and authorization boundaries.
+- Current phase: Phase 2 — backend foundation
+- Branch: `v0/phase-1-foundation`; existing Phase 1 work is preserved.
+- Completed: FastAPI service, SQLAlchemy user/device/telemetry models, Alembic initial migration, Argon2 password hashing, JWT bearer authentication, ownership authorization, validation, and SQLite-backed API tests.
+- Verification: `pytest backend/test_api.py` passed (2 tests); `DATABASE_URL=sqlite:///./phase2-check.db alembic upgrade head` passed; `curl http://localhost:3000/api/health` returned `status: ok`; `npm run typecheck` and `npm run build` passed. PostgreSQL persistence was not tested because no running PostgreSQL instance is configured.
+- Intentionally deferred: telemetry ingestion beyond the core event endpoint, risk engine, recommendations, anomaly model, simulator, Neo4j, and external integrations.
+- Known limitations: SQLite is test-only. Set `DATABASE_URL` and run `alembic upgrade head` against PostgreSQL before claiming production persistence.
+- Exact next task: configure a running PostgreSQL test environment and verify migrations, persistence, and auth against it before adding risk logic.

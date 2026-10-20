@@ -10,12 +10,16 @@ The repository began with only `test.md`. Phase 1 now includes a minimal Next.js
 
 ## Implemented and verified result
 
-All four Phase 1 acceptance subtasks are complete: project foundation, responsive dashboard shell, documentation/handoff, and health verification. The dashboard is a responsive shell with honest empty states. `GET /api/health` returned `status: ok` with web status `ok` and database/graph services explicitly `not_configured`. `npm run typecheck` and `npm run build` both passed. Security headers are configured in `next.config.ts`.
+Phase 1 remains intact, and Phase 2 backend foundation is now implemented in `backend/`: FastAPI routes, SQLAlchemy models, Alembic migration, Argon2 password hashing, JWT bearer auth, validation, and owner-scoped device/telemetry access. `pytest backend/test_api.py` passed with SQLite, the SQLite Alembic migration passed, `curl http://localhost:3000/api/health` returned the expected healthy web response, and the Next.js typecheck/build passed. PostgreSQL is configurable through `DATABASE_URL`, but persistence is explicitly unverified because no running PostgreSQL instance was available.
 
 ## Do not overwrite
 
 Preserve the documentation contract and the distinction between planned services and verified services. Do not add fake data to make the dashboard appear complete.
 
+## Phase 2 connection and verification
+
+Set `DATABASE_URL` to a PostgreSQL SQLAlchemy URL and run `alembic upgrade head` from the project root. Then run the backend tests with that environment and add a PostgreSQL integration test run before declaring persistence verified. The local SQLite default exists only to make isolated API tests runnable without pretending PostgreSQL is connected.
+
 ## Next task
 
-Implement Phase 2 backend foundation: Python/FastAPI service, PostgreSQL configuration, versioned migrations, secure email/password authentication, and core user/device/telemetry ownership boundaries. Update the API contract and this handoff with actual verification results before moving to risk logic.
+Verify this backend against a running PostgreSQL database, then add risk logic only after the persistence and authorization boundary is confirmed.

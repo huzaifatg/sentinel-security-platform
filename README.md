@@ -4,7 +4,7 @@ Sentinel is a personal cybersecurity digital twin for security monitoring, expla
 
 ## Current phase
 
-Phase 1 foundation: the Next.js application shell, responsive security dashboard structure, baseline headers, and a truthful web health endpoint are implemented. Backend services, persistence, authentication, telemetry, scoring, graph storage, and ML are intentionally not implemented yet.
+Phase 2 backend foundation: the FastAPI service, SQLAlchemy models, Alembic initial migration, JWT authentication, ownership authorization, and SQLite-backed API tests are implemented. PostgreSQL remains configurable but is not claimed as verified until tests run against a live PostgreSQL instance.
 
 ## Run locally
 

@@ -1,6 +1,6 @@
 # API contract
 
-Status: foundation only. Implemented endpoints are listed below; all domain endpoints are planned and must not be represented as live UI data.
+Status: Phase 2 backend foundation. The FastAPI endpoints below are implemented and tested against SQLite; PostgreSQL persistence remains unverified until a running PostgreSQL instance is configured.
 
 ## Implemented
 
@@ -16,6 +16,10 @@ Response `200`:
 
 The response reports web availability and explicitly identifies unconfigured services. It does not claim database or graph connectivity.
 
+## Phase 2 backend endpoints
+
+`POST /api/v1/auth/register`, `POST /api/v1/auth/login`, `GET /api/v1/auth/me`, `POST /api/v1/devices`, `GET /api/v1/devices`, `GET /api/v1/devices/{device_id}`, `POST /api/v1/devices/{device_id}/telemetry`, and `GET /api/v1/devices/{device_id}/telemetry` are implemented with Pydantic validation, bearer authentication, and ownership enforcement.
+
 ## Planned
 
-`/api/v1/auth`, `/api/v1/devices`, `/api/v1/telemetry`, `/api/v1/findings`, `/api/v1/alerts`, `/api/v1/recommendations`, `/api/v1/twin`, `/api/v1/anomalies`, `/api/v1/simulations`, and `/api/v1/dashboard` will be added with Pydantic schemas, pagination where needed, ownership enforcement, and documented error responses.
+Findings, alerts, recommendations, twin state, anomaly scoring, simulations, and dashboard aggregation remain planned. No UI data is fabricated for these areas.
