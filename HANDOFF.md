@@ -32,7 +32,7 @@ Added authenticated, owner-scoped anomaly routes (`/api/v1/anomalies/model/train
 
 ## Verification checkpoint
 
-The live preview opens and the main dashboard renders at the current desktop viewport. `GET /api/health` returns `status: ok` with `web: ok`, `database: not_configured`, and `graph: not_configured`. The 9-test SQLite API suite, SQLite Alembic upgrade, frontend typecheck, and production build pass. The dashboard risk-assessment form is wired to the FastAPI response path and explicitly shows an unavailable state rather than fabricating scores or findings when no authenticated backend response is available.
+The live preview opens and the main dashboard renders at the current desktop viewport (1078x813, dark mode). `GET /api/health` returns `status: ok` with `web: ok`, `database: not_configured`, and `graph: not_configured`. The 9-test SQLite API suite, SQLite Alembic upgrade, frontend typecheck, lint, and production build pass. The dashboard risk-assessment form is wired to the FastAPI response path and explicitly shows an unavailable state rather than fabricating scores or findings when no authenticated backend response is available. The earlier deployment blocker was the vulnerable `next@16.0.0`; the dependency is now `next@16.4.2`, but no new production deployment has been run in this checkpoint.
 
 ## Next task
 
