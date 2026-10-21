@@ -1,5 +1,6 @@
 import json
 from dataclasses import asdict
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,10 +11,13 @@ from sqlalchemy.orm import Session
 from .auth import create_access_token, get_current_user, hash_password, verify_password
 from .config import get_settings
 from .database import Base, engine, get_db
-from .models import Device, TelemetryEvent, User
+from .models import AnomalyEvent, Device, SimulationRecord, TelemetryEvent, User
 from .schemas import DeviceCreate, DeviceRead, TelemetryCreate, TelemetryRead, Token, UserCreate, UserRead
 from .risk import assess
 from .risk_schemas import RiskAssessmentRead, RiskAssessmentRequest
+from .anomaly import FEATURE_NAMES, ModelUnavailableError, infer, train_model
+from .anomaly_schemas import AnomalyEventCreate, AnomalyEventRead, AnomalyModelTrainRead, AnomalyModelTrainRequest
+from .simulation_schemas import SimulationRead, SimulationRequest
 
 settings = get_settings()
 app = FastAPI(title=settings.app_name, version="0.2.0")
@@ -111,4 +115,68 @@ def assess_risk(payload: RiskAssessmentRequest, user: User = Depends(get_current
         severity=severity,
         findings=[asdict(finding) for finding in findings],
     )
+
+
+MODEL_PATH = Path(settings.model_directory) / "isolation-forest.joblib"
+
+
+def synthetic_training_events() -> list[dict[str, int | bool]]:
+    return [
+        {"login_hour": hour, "failed_attempts": attempts, "new_device": new, "network_change": network}
+        for hour, attempts, new, network in ((9, 0, False, False), (10, 0, False, False), (8, 1, False, False), (12, 0, False, False), (14, 1, False, False), (16, 0, False, False), (11, 1, False, False), (13, 0, False, False))
+    ]
+
+
+@app.post("/api/v1/anomalies/model/train", response_model=AnomalyModelTrainRead)
+def train_anomaly_model(payload: AnomalyModelTrainRequest, user: User = Depends(get_current_user)) -> AnomalyModelTrainRead:
+    events = payload.events or synthetic_training_events()
+    metadata = train_model(events, MODEL_PATH)
+    return AnomalyModelTrainRead(**metadata, feature_names=FEATURE_NAMES, training_events=len(events))
+
+
+@app.post("/api/v1/anomalies/events", response_model=AnomalyEventRead, status_code=201)
+def detect_anomaly(payload: AnomalyEventCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> AnomalyEvent:
+    owned_device(payload.device_id, user, db)
+    try:
+        result = infer(payload.features, MODEL_PATH)
+    except ModelUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    event = AnomalyEvent(owner_id=user.id, device_id=payload.device_id, features=json.dumps(payload.features), source=payload.source, is_anomaly=result.is_anomaly, score=result.score, explanation=result.explanation, model_version=result.model_version)
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+@app.get("/api/v1/anomalies/events", response_model=list[AnomalyEventRead])
+def list_anomalies(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[AnomalyEventRead]:
+    events = db.scalars(select(AnomalyEvent).where(AnomalyEvent.owner_id == user.id).order_by(AnomalyEvent.id)).all()
+    return [AnomalyEventRead(id=e.id, device_id=e.device_id, features=json.loads(e.features), source=e.source, is_anomaly=e.is_anomaly, score=e.score, explanation=e.explanation, model_version=e.model_version, observed_at=e.observed_at) for e in events]
+
+
+@app.post("/api/v1/simulations", response_model=SimulationRead, status_code=201)
+def create_simulation(payload: SimulationRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> SimulationRecord:
+    before_score, before_findings = assess(payload.asset_id, payload.current_signals)
+    signals = dict(payload.current_signals)
+    changes = payload.changes.model_dump(exclude_none=True)
+    mapping = {"mfa_enabled": "mfa_disabled", "operating_system_updated": "operating_system_outdated", "firewall_enabled": "firewall_disabled", "disk_encryption_enabled": "disk_encryption_disabled"}
+    for change, rule in mapping.items():
+        if change in changes:
+            signals[rule] = not changes[change]
+    if changes.get("remove_unknown_device"):
+        signals["unknown_device"] = False
+    after_score, after_findings = assess(payload.asset_id, signals)
+    before_rules = {finding.rule for finding in before_findings}
+    after_rules = {finding.rule for finding in after_findings}
+    record = SimulationRecord(owner_id=user.id, asset_id=payload.asset_id, before_risk_score=before_score, after_risk_score=after_score, before_security_score=100 - before_score, after_security_score=100 - after_score, removed_findings=json.dumps(sorted(before_rules - after_rules)), added_findings=json.dumps(sorted(after_rules - before_rules)), explanation="Projected scores are calculated by the same rules as risk assessment and are not persisted as device state.")
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+@app.get("/api/v1/simulations", response_model=list[SimulationRead])
+def list_simulations(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[SimulationRead]:
+    rows = db.scalars(select(SimulationRecord).where(SimulationRecord.owner_id == user.id).order_by(SimulationRecord.id.desc())).all()
+    return [SimulationRead(id=row.id, asset_id=row.asset_id, before_risk_score=row.before_risk_score, after_risk_score=row.after_risk_score, before_security_score=row.before_security_score, after_security_score=row.after_security_score, removed_findings=json.loads(row.removed_findings), added_findings=json.loads(row.added_findings), explanation=row.explanation, created_at=row.created_at) for row in rows]
 

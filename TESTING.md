@@ -11,4 +11,6 @@
 - `uv run --with-requirements requirements.txt -- python -m pytest backend/test_api.py -q` — passed: 6 tests covering SQLite-backed registration, login, bearer authentication, ownership enforcement, validation, telemetry, risk score caps, severity boundaries, deduplication, unknown-signal handling, and evidence.
 - `alembic upgrade head` against a running PostgreSQL instance — not run; PostgreSQL persistence is intentionally unverified in this environment.
 
+Phase 4 checks: `uv run --with scikit-learn --with joblib python -m compileall backend migrations` — passed. `uv run --with pytest --with scikit-learn --with joblib --with httpx pytest backend/test_api.py -q` — passed: 6 tests. `npm run build` — passed. New anomaly training/inference and simulator persistence still require focused tests and a running PostgreSQL integration environment.
+
 The backend tests do not prove PostgreSQL persistence, graph storage, telemetry collection, risk scoring, or ML behavior.

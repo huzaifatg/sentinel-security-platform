@@ -26,6 +26,10 @@ Added `backend/risk.py` as a deterministic, pure risk engine and `POST /api/v1/r
 
 The risk response is intentionally computed per request and is not presented as persisted database state. PostgreSQL remains configurable through `DATABASE_URL`; persistence and Alembic behavior must be verified against a running PostgreSQL instance before production claims. Backend verification now passes via the isolated `uv run --with-requirements requirements.txt` environment: 6 tests are green. The tests use SQLite and do not prove PostgreSQL persistence.
 
+## Phase 4 result
+
+Added authenticated, owner-scoped anomaly routes (`/api/v1/anomalies/model/train`, `/api/v1/anomalies/detect`, and `/api/v1/anomalies`) using a persisted scikit-learn Isolation Forest artifact and persisted evidence-backed event records. Added authenticated simulator create/list routes with scenario validation and persisted baseline/modified risk outputs. Models and Alembic migration `0002_phase4` are included. The implementation has been syntax-checked and the existing SQLite API suite remains green; PostgreSQL persistence and model artifact durability remain unverified until a running PostgreSQL environment is configured.
+
 ## Next task
 
-Install the pinned Python requirements, run `pytest backend/test_api.py`, then verify `alembic upgrade head` and the API against a running PostgreSQL database before adding persisted findings, anomaly detection, or simulator workflows.
+Add focused Phase 4 tests for anomaly training/inference and simulator ownership, then verify `alembic upgrade head` and the API against a running PostgreSQL database. Do not claim production persistence until that integration run passes.

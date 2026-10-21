@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 30
     cors_origins: str = "http://localhost:3000"
+    model_directory: str = "./artifacts"
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property

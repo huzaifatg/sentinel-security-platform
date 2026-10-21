@@ -1,9 +1,9 @@
 # Project status
 
-- Current phase: Phase 3 — risk engine and findings
+- Current phase: Phase 4 — anomaly detection and simulator foundation
 - Branch: `v0/phase-1-foundation`; existing Phase 1 work is preserved.
-- Completed: FastAPI service, SQLAlchemy user/device/telemetry models, Alembic initial migration, Argon2 password hashing, JWT bearer authentication, ownership authorization, validation, SQLite-backed API tests, deterministic signal-based risk assessment, severity bands, findings, evidence, and recommendations.
+- Completed: FastAPI service, SQLAlchemy user/device/telemetry/anomaly/simulation models, Alembic migrations, Argon2 password hashing, JWT bearer authentication, ownership authorization, validation, deterministic signal-based risk assessment, severity bands, findings, evidence, recommendations, Isolation Forest training/inference, anomaly event persistence, and simulator scenario persistence.
 - Verification: the live local dashboard opens and renders, `GET /api/health` returns `status: ok` with database and graph marked `not_configured`, `npm run typecheck` passes, `npm run build` passes with Next.js 16.4.2, and `uv run --with-requirements requirements.txt -- python -m pytest backend/test_api.py -q` passes (6 tests). PostgreSQL persistence remains unverified because no running PostgreSQL instance is configured.
-- Intentionally deferred: persisted findings/alerts, anomaly model, simulator, Neo4j, frontend data wiring, and external integrations.
+- Intentionally deferred: Neo4j, graph enrichment, external integrations, and PostgreSQL production verification.
 - Known limitations: SQLite is test-only. Set `DATABASE_URL` and run `alembic upgrade head` against PostgreSQL before claiming production persistence.
 - Exact next task: configure a running PostgreSQL test environment and verify migrations, persistence, and auth against it before adding risk logic.
