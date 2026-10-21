@@ -145,7 +145,7 @@ def detect_anomaly(payload: AnomalyEventCreate, user: User = Depends(get_current
     db.add(event)
     db.commit()
     db.refresh(event)
-    return event
+    return AnomalyEventRead(id=event.id, device_id=event.device_id, features=payload.features, source=event.source, is_anomaly=event.is_anomaly, score=event.score, explanation=event.explanation, model_version=event.model_version, observed_at=event.observed_at)
 
 
 @app.get("/api/v1/anomalies/events", response_model=list[AnomalyEventRead])
@@ -168,11 +168,14 @@ def create_simulation(payload: SimulationRequest, user: User = Depends(get_curre
     after_score, after_findings = assess(payload.asset_id, signals)
     before_rules = {finding.rule for finding in before_findings}
     after_rules = {finding.rule for finding in after_findings}
-    record = SimulationRecord(owner_id=user.id, asset_id=payload.asset_id, before_risk_score=before_score, after_risk_score=after_score, before_security_score=100 - before_score, after_security_score=100 - after_score, removed_findings=json.dumps(sorted(before_rules - after_rules)), added_findings=json.dumps(sorted(after_rules - before_rules)), explanation="Projected scores are calculated by the same rules as risk assessment and are not persisted as device state.")
+    removed_findings = sorted(before_rules - after_rules)
+    added_findings = sorted(after_rules - before_rules)
+    explanation = "Projected scores are calculated by the same rules as risk assessment and are not persisted as device state."
+    record = SimulationRecord(owner_id=user.id, asset_id=payload.asset_id, before_risk_score=before_score, after_risk_score=after_score, before_security_score=100 - before_score, after_security_score=100 - after_score, removed_findings=json.dumps(removed_findings), added_findings=json.dumps(added_findings), explanation=explanation)
     db.add(record)
     db.commit()
     db.refresh(record)
-    return record
+    return SimulationRead(id=record.id, asset_id=record.asset_id, before_risk_score=record.before_risk_score, after_risk_score=record.after_risk_score, before_security_score=record.before_security_score, after_security_score=record.after_security_score, removed_findings=removed_findings, added_findings=added_findings, explanation=record.explanation, created_at=record.created_at)
 
 
 @app.get("/api/v1/simulations", response_model=list[SimulationRead])

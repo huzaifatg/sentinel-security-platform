@@ -28,8 +28,12 @@ The risk response is intentionally computed per request and is not presented as 
 
 ## Phase 4 result
 
-Added authenticated, owner-scoped anomaly routes (`/api/v1/anomalies/model/train`, `/api/v1/anomalies/detect`, and `/api/v1/anomalies`) using a persisted scikit-learn Isolation Forest artifact and persisted evidence-backed event records. Added authenticated simulator create/list routes with scenario validation and persisted baseline/modified risk outputs. Models and Alembic migration `0002_phase4` are included. The implementation has been syntax-checked and the existing SQLite API suite remains green; PostgreSQL persistence and model artifact durability remain unverified until a running PostgreSQL environment is configured.
+Added authenticated, owner-scoped anomaly routes (`/api/v1/anomalies/model/train`, `/api/v1/anomalies/detect`, and `/api/v1/anomalies`) using a persisted scikit-learn Isolation Forest artifact and persisted evidence-backed event records. Added authenticated simulator create/list routes with scenario validation and persisted baseline/modified risk outputs. Models and Alembic migration `0002_phase4` are included. Focused tests now cover anomaly training/inference, evidence serialization, simulator determinism/non-mutation, and cross-user ownership; the full SQLite API suite passes with 9 tests. A response serialization defect found by those tests was fixed so JSON feature and finding fields are returned as typed arrays/objects rather than database strings. PostgreSQL persistence and model artifact durability remain unverified until a running PostgreSQL environment is configured.
+
+## Verification checkpoint
+
+The live preview opens and the main dashboard renders at the current desktop viewport. `GET /api/health` returns `status: ok` with `web: ok`, `database: not_configured`, and `graph: not_configured`. The 9-test SQLite API suite, SQLite Alembic upgrade, frontend typecheck, and production build pass. The dashboard risk-assessment form is wired to the FastAPI response path and explicitly shows an unavailable state rather than fabricating scores or findings when no authenticated backend response is available.
 
 ## Next task
 
-Add focused Phase 4 tests for anomaly training/inference and simulator ownership, then verify `alembic upgrade head` and the API against a running PostgreSQL database. Do not claim production persistence until that integration run passes.
+Configure a running PostgreSQL test environment and verify `alembic upgrade head`, persistence, and authentication against it. Do not claim production persistence or a successful production deployment until those checks and a deployment run pass.
