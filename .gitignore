@@ -1,0 +1,21 @@
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Local databases and generated ML artifacts
+*.db
+artifacts/
+
+# Next.js artifacts
+.next/
+out/
+
+# Local tooling
+.vercel/

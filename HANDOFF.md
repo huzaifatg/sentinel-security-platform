@@ -34,6 +34,12 @@ Added authenticated, owner-scoped anomaly routes (`/api/v1/anomalies/model/train
 
 The live preview opens and the main dashboard renders at the current desktop viewport (1078x813, dark mode). `GET /api/health` returns `status: ok` with `web: ok`, `database: not_configured`, and `graph: not_configured`. The 9-test SQLite API suite, SQLite Alembic upgrade, frontend typecheck, lint, and production build pass. The dashboard risk-assessment form is wired to the FastAPI response path and explicitly shows an unavailable state rather than fabricating scores or findings when no authenticated backend response is available. The earlier deployment blocker was the vulnerable `next@16.0.0`; the dependency is now `next@16.4.2`, but no new production deployment has been run in this checkpoint.
 
+## Render and Neon preparation
+
+The backend entry point is `backend.main:app`, started with `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`. A Render backend Web Service should use the repository root, build with `pip install -r requirements.txt`, and configure server-side `DATABASE_URL`, `JWT_SECRET`, `JWT_ALGORITHM`, `ACCESS_TOKEN_MINUTES`, and `CORS_ORIGINS`. The frontend should use `NEXT_PUBLIC_API_URL` for the public backend origin; no database credentials belong in frontend variables.
+
+`DATABASE_URL` accepts Neon's pooled `postgresql://...` URL and normalizes it to `postgresql+psycopg://...` because `psycopg[binary]` is installed. `alembic upgrade head` runs from the repository root and reads the same environment as the service. This preparation has not connected to Neon, run migrations, or verified PostgreSQL CRUD.
+
 ## Next task
 
 Configure a running PostgreSQL test environment and verify `alembic upgrade head`, persistence, and authentication against it. Do not claim production persistence or a successful production deployment until those checks and a deployment run pass.
