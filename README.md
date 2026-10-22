@@ -26,7 +26,7 @@ See `ARCHITECTURE.md`, `API_CONTRACT.md`, `PROJECT_STATUS.md`, and `HANDOFF.md` 
 
 ## Deploy the FastAPI backend on Render with Neon
 
-The backend is intended to run as a separate Render Web Service from this repository root. The Next.js app remains the frontend; Render is not used to host the backend inside the Next.js process.
+The backend is intended to run as a separate Render Web Service from this repository root. The Next.js app remains the frontend; Render is not used to host the backend inside the Next.js process. Deploy the `v0/phase-1-foundation` branch, which contains the backend and dependency manifest; the historical `main` commit used by the failed deployment does not contain them.
 
 1. In Render, create a **Web Service** connected to this repository and use the repository root (`/`) as the service root.
 2. Use `pip install -r requirements.txt` as the build command.

@@ -36,7 +36,7 @@ The live preview opens and the main dashboard renders at the current desktop vie
 
 ## Render and Neon preparation
 
-The backend entry point is `backend.main:app`, started with `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`. A Render backend Web Service should use the repository root, build with `pip install -r requirements.txt`, and configure server-side `DATABASE_URL`, `JWT_SECRET`, `JWT_ALGORITHM`, `ACCESS_TOKEN_MINUTES`, and `CORS_ORIGINS`. The frontend should use `NEXT_PUBLIC_API_URL` for the public backend origin; no database credentials belong in frontend variables.
+The backend entry point is `backend.main:app`, started with `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`. A Render backend Web Service should deploy branch `v0/phase-1-foundation` (the historical `main` commit used by the failed deployment lacks `requirements.txt` and `backend/`), use the repository root, build with `pip install -r requirements.txt`, and configure server-side `DATABASE_URL`, `JWT_SECRET`, `JWT_ALGORITHM`, `ACCESS_TOKEN_MINUTES`, and `CORS_ORIGINS`. Python is pinned with `.python-version` to `3.13.11` for the pinned dependency set. The frontend should use `NEXT_PUBLIC_API_URL` for the public backend origin; no database credentials belong in frontend variables.
 
 `DATABASE_URL` accepts Neon's pooled `postgresql://...` URL and normalizes it to `postgresql+psycopg://...` because `psycopg[binary]` is installed. `alembic upgrade head` runs from the repository root and reads the same environment as the service. This preparation has not connected to Neon, run migrations, or verified PostgreSQL CRUD.
 

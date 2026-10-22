@@ -11,6 +11,8 @@
 - `uv run --with-requirements requirements.txt -- python -m pytest backend/test_api.py -q` — passed: 6 tests covering SQLite-backed registration, login, bearer authentication, ownership enforcement, validation, telemetry, risk score caps, severity boundaries, deduplication, unknown-signal handling, and evidence.
 - `alembic upgrade head` against a running PostgreSQL instance — not run; PostgreSQL persistence is intentionally unverified in this environment.
 
+Render deployment configuration check: deploy branch `v0/phase-1-foundation` from repository root with Python `3.13.11`, build command `pip install -r requirements.txt`, and start command `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`. The failed historical deployment used `main`, which did not contain `requirements.txt` or `backend/`; no production deployment is claimed here.
+
 Phase 4 checks: `uv run --with scikit-learn --with joblib python -m compileall backend migrations` — passed. `uv run --with-requirements requirements.txt -- python -m pytest backend/test_api.py -q` — passed: 9 tests, including anomaly training/inference, evidence serialization, simulator determinism/non-mutation, and cross-user ownership. `uv run --with-requirements requirements.txt -- alembic upgrade head` — passed against the configured SQLite test database. `npm run typecheck` — passed. `npm run build` — passed. PostgreSQL integration and production deployment remain unverified.
 
 The backend tests do not prove PostgreSQL persistence, graph storage, telemetry collection, risk scoring, or ML behavior.

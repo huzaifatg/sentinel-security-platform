@@ -6,6 +6,7 @@
 - Verification: the live local dashboard opens and renders, `GET /api/health` returns `status: ok` with database and graph marked `not_configured`, `npm run typecheck`, `npm run lint`, and `npm run build` pass, and `uv run --with-requirements requirements.txt -- python -m pytest backend/test_api.py -q` passes (9 tests). SQLite Alembic upgrade passes; PostgreSQL persistence remains unverified because no running PostgreSQL instance is configured.
 - Intentionally deferred: Neo4j, graph enrichment, external integrations, and PostgreSQL production verification.
 - Known limitations: SQLite is test-only. Set `DATABASE_URL` and run `alembic upgrade head` against PostgreSQL before claiming production persistence.
+- Render deployment finding: the failed build checked out `main` at `126346b922e2a4ebeacfa5ed2074c78209ba8dab`, where `requirements.txt` and `backend/` do not exist. Deploy `v0/phase-1-foundation` instead; its repository root contains the required manifest and service entry point. Python is pinned to `3.13.11` for the pinned dependency set; no production deployment was run.
 - Exact next task: configure a running PostgreSQL test environment and verify migrations, persistence, and auth against it before making production persistence claims. Phase 4 feature work is complete for this checkpoint.
 
 ## Frontend completion checkpoint
