@@ -8,9 +8,16 @@ from fastapi.testclient import TestClient
 import pytest
 
 from backend.anomaly import FeatureValidationError, ModelUnavailableError, infer, train_model
+from backend.config import Settings
 from backend.database import Base, engine
 from backend.main import app
 from backend.risk import assess, severity_for
+
+
+def test_postgresql_urls_select_psycopg3_for_alembic_and_app() -> None:
+    database_url = "postgresql://neon_user:pa%25ss@example.neon.tech/sentinel?sslmode=require"
+    settings = Settings(database_url=database_url)
+    assert settings.sqlalchemy_database_url == database_url.replace("postgresql://", "postgresql+psycopg://", 1)
 
 Base.metadata.drop_all(bind=engine)
 Base.metadata.create_all(bind=engine)
