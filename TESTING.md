@@ -16,3 +16,12 @@ Phase 4 checks: `uv run --with scikit-learn --with joblib python -m compileall b
 The backend tests do not prove PostgreSQL persistence, graph storage, telemetry collection, risk scoring, or ML behavior.
 
 Current verification checkpoint: `npm run typecheck`, `npm run lint`, and `npm run build` pass after adding the repository's flat ESLint configuration. `npm audit --audit-level=high` still reports five high-severity transitive advisories from `eslint-config-next`/`fast-glob`; `npm audit fix --force` would select an incompatible major downgrade and was not applied. The local preview and `/api/health` are healthy. No production deployment was attempted, so local build success must not be reported as deployment success.
+
+## Frontend completion verification
+
+- `npm run typecheck` — passed after the complete frontend route shell was added.
+- `npm run lint` — passed.
+- `npm run build` — passed; Next.js generated `/`, `/[...slug]`, and `/api/health` successfully.
+- Live preview at desktop 1137x813, dark mode — passed for overview and devices navigation; screenshots saved under `/tmp/agent-browser/`.
+- Demo-only pages are intentionally not evidence of backend persistence. The risk console remains API-backed and reports unavailable when no authenticated backend response is available.
+- Production deployment — not run in this checkpoint.

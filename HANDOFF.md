@@ -40,6 +40,12 @@ The backend entry point is `backend.main:app`, started with `uvicorn backend.mai
 
 `DATABASE_URL` accepts Neon's pooled `postgresql://...` URL and normalizes it to `postgresql+psycopg://...` because `psycopg[binary]` is installed. `alembic upgrade head` runs from the repository root and reads the same environment as the service. This preparation has not connected to Neon, run migrations, or verified PostgreSQL CRUD.
 
+## Frontend completion checkpoint
+
+The frontend now includes a complete navigable Sentinel workspace across overview, devices, risk findings, digital twin, anomalies, simulator, activity, reports, and settings. It preserves the dark operational dashboard language and clearly labels demo-only data. The risk console continues to call the existing FastAPI risk endpoint and presents an unavailable state when no authenticated backend response is available; it does not fabricate live findings.
+
+The live preview was verified at 1137x813 in dark mode: overview and `/devices` rendered successfully. `npm run typecheck`, `npm run lint`, and `npm run build` all pass. Route coverage is provided by the root page plus the shared catch-all route; no authentication or database claims were added.
+
 ## Next task
 
 Configure a running PostgreSQL test environment and verify `alembic upgrade head`, persistence, and authentication against it. Do not claim production persistence or a successful production deployment until those checks and a deployment run pass.

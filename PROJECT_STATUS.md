@@ -7,3 +7,9 @@
 - Intentionally deferred: Neo4j, graph enrichment, external integrations, and PostgreSQL production verification.
 - Known limitations: SQLite is test-only. Set `DATABASE_URL` and run `alembic upgrade head` against PostgreSQL before claiming production persistence.
 - Exact next task: configure a running PostgreSQL test environment and verify migrations, persistence, and auth against it before making production persistence claims. Phase 4 feature work is complete for this checkpoint.
+
+## Frontend completion checkpoint
+
+Implemented a complete, navigable demo frontend while preserving the approved dashboard visual language. Added working routes for `/`, `/devices`, `/risk-findings`, `/digital-twin`, `/anomalies`, `/simulator`, `/activity`, `/reports`, and `/settings`. The pages provide labeled demo inventory, findings, anomaly interpretation, digital-twin visualization, print-friendly reporting, local settings, search/filter affordances, and an interactive what-if simulator. The existing authenticated risk console remains wired to the FastAPI response path; no fabricated live backend response was added.
+
+Frontend verification: `npm run typecheck`, `npm run lint`, and `npm run build` pass. The live preview renders the overview and devices pages at the requested 1137x813 dark desktop viewport. Pages without verified backend data are explicitly labeled demo/simulation-only. Neon, Render, PostgreSQL persistence, and production deployment remain unverified.
