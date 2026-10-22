@@ -19,3 +19,9 @@ out/
 
 # Local tooling
 .vercel/
+.vscode/
+
+# Node
+node_modules/
+*.tsbuildinfo
+next-env.d.ts

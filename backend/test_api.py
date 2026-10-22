@@ -11,7 +11,7 @@ from backend.anomaly import FeatureValidationError, ModelUnavailableError, infer
 from backend.config import Settings
 from backend.database import Base, engine
 from backend.main import app
-from backend.risk import assess, severity_for
+from backend.risk import severity_for
 
 
 def test_health_reports_sqlite_connectivity_and_schema() -> None:
@@ -54,10 +54,25 @@ def test_risk_assessment_returns_findings_and_score() -> None:
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["risk_score"] == 40
-    assert body["security_score"] == 60
-    assert body["severity"] == "medium"
-    assert {finding["rule"] for finding in body["findings"]} == {"disk_encryption_disabled", "mfa_disabled"}
+    # mfa (20) + disk encryption (12) disabled; the other 68 weight points are unknown (factor 0.5) -> 32 + 34.
+    assert body["risk_score"] == 66
+    assert body["security_score"] == 34
+    assert body["severity"] == "high"
+    assert body["methodology_version"] == "sentinel-risk-v2"
+    gaps = {finding["rule"] for finding in body["findings"] if finding["category"] == "control_gap"}
+    assert gaps == {"disk_encryption_disabled", "mfa_disabled"}
+    assert len(body["signals"]) == 8 and body["coverage"] == 32
+
+
+def test_risk_assessment_accepts_explicit_controls_and_rejects_invalid() -> None:
+    token = register("risk-controls@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    secure = {key: "enabled" for key in ("mfa", "os_updates", "endpoint_protection", "firewall", "disk_encryption", "screen_lock")}
+    body = client.post("/api/v1/risk/assess", headers=headers, json={"asset_id": "x", "controls": {**secure, "auth_activity": "normal", "network_activity": "normal"}}).json()
+    assert body["risk_score"] == 0 and body["findings"] == []
+    assert client.post("/api/v1/risk/assess", headers=headers, json={"asset_id": "x", "controls": {"firewall": "high"}}).status_code == 422
+    assert client.post("/api/v1/risk/assess", headers=headers, json={"asset_id": "x", "controls": {"firewall": "maybe"}}).status_code == 422
+    assert client.post("/api/v1/risk/assess", headers=headers, json={"asset_id": "x", "controls": {"unknown_key": "enabled"}}).status_code == 422
 
 
 def test_risk_assessment_requires_authentication() -> None:
@@ -77,31 +92,20 @@ def test_device_ownership_and_telemetry() -> None:
     assert client.get(f"/api/v1/devices/{device_id}/telemetry", headers={"Authorization": f"Bearer {alice}"}).json()[0]["payload"] == {"source": "test"}
 
 
-def test_risk_boundaries_caps_and_evidence() -> None:
-    all_signals = {key: True for key in ("disk_encryption_disabled", "unusual_login", "firewall_disabled", "operating_system_outdated", "mfa_disabled", "unknown_device")}
-    score, findings = assess("workstation-1", all_signals)
-    assert score == 100
-    assert severity_for(score).value == "critical"
-    assert all(finding.evidence.startswith("signal:") for finding in findings)
-    assert all(finding.severity.value == "critical" for finding in findings)
-
-    score, findings = assess("workstation-1", {"mfa_disabled": True, "unknown_device": True})
-    assert score == 25
-    assert severity_for(score).value == "low"
-    assert {finding.rule for finding in findings} == {"mfa_disabled", "unknown_device"}
-
-    score, findings = assess("workstation-1", {"mfa_disabled": True, "unknown_device": True, "ignored": True})
-    assert score == 25
-    assert len(findings) == 2
+def test_methodology_is_public_and_weights_sum_to_100() -> None:
+    body = client.get("/api/v1/risk/methodology").json()
+    assert body["version"] == "sentinel-risk-v2"
+    assert sum(signal["weight"] for signal in body["signals"]) == 100
+    assert {band["severity"] for band in body["severity_bands"]} == {"low", "medium", "high", "critical"}
 
 
 def test_severity_boundaries_are_inclusive() -> None:
-    assert severity_for(30).value == "low"
-    assert severity_for(31).value == "medium"
-    assert severity_for(60).value == "medium"
-    assert severity_for(61).value == "high"
-    assert severity_for(80).value == "high"
-    assert severity_for(81).value == "critical"
+    assert severity_for(24).value == "low"
+    assert severity_for(25).value == "medium"
+    assert severity_for(49).value == "medium"
+    assert severity_for(50).value == "high"
+    assert severity_for(74).value == "high"
+    assert severity_for(75).value == "critical"
 
 
 def anomaly_features(hour: int = 9, attempts: int = 0, new: bool = False, network: bool = False) -> dict[str, int | bool]:
@@ -157,3 +161,104 @@ def test_simulation_is_deterministic_owner_scoped_and_non_mutating() -> None:
     assert client.post("/api/v1/risk/assess", headers={"Authorization": f"Bearer {alice}"}, json={"asset_id": "workstation-1", "signals": payload["current_signals"]}).json()["risk_score"] == before["risk_score"]
     assert client.get("/api/v1/simulations", headers={"Authorization": f"Bearer {bob}"}).json() == []
     assert client.post("/api/v1/simulations", headers={"Authorization": f"Bearer {bob}"}, json={"asset_id": "", "current_signals": {}, "changes": {}}).status_code == 422
+    assert client.post("/api/v1/simulations", headers={"Authorization": f"Bearer {bob}"}, json={"changes": {}}).status_code == 422
+
+
+def auth(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
+
+
+def new_device(token: str, name: str = "Laptop") -> int:
+    response = client.post("/api/v1/devices", headers=auth(token), json={"name": name, "serial_number": f"SN-{name}"})
+    assert response.status_code == 201
+    return response.json()["id"]
+
+
+def states(profile: dict) -> dict[str, str]:
+    return {signal["key"]: signal["state"] for signal in profile["signals"]}
+
+
+def test_security_profile_defaults_update_and_account_scope() -> None:
+    alice, bob = register("profile-owner@example.com"), register("profile-other@example.com")
+    laptop, phone = new_device(alice, "Laptop"), new_device(alice, "Phone")
+    profile = client.get(f"/api/v1/devices/{laptop}/security-profile", headers=auth(alice)).json()
+    assert set(states(profile).values()) == {"unknown"}
+    assert {signal["source"] for signal in profile["signals"]} == {"default"}
+
+    updated = client.put(f"/api/v1/devices/{laptop}/security-profile", headers=auth(alice),
+                         json={"controls": {"mfa": "enabled", "firewall": "disabled", "screen_lock": "not_applicable"}, "source": "synthetic_demo"})
+    assert updated.status_code == 200
+    body = updated.json()
+    assert states(body)["firewall"] == "disabled" and states(body)["screen_lock"] == "not_applicable"
+    assert next(s for s in body["signals"] if s["key"] == "firewall")["source"] == "synthetic_demo"
+    # MFA is account-level: it applies to every device of the account; device controls do not leak.
+    phone_states = states(client.get(f"/api/v1/devices/{phone}/security-profile", headers=auth(alice)).json())
+    assert phone_states["mfa"] == "enabled" and phone_states["firewall"] == "unknown"
+
+    assert client.put(f"/api/v1/devices/{laptop}/security-profile", headers=auth(alice), json={"controls": {"firewall": "high"}}).status_code == 422
+    assert client.put(f"/api/v1/devices/{laptop}/security-profile", headers=auth(alice), json={"controls": {"auth_activity": "normal"}}).status_code == 422
+    assert client.put(f"/api/v1/devices/{laptop}/security-profile", headers=auth(alice), json={"controls": {"firewall": "enabled"}, "source": "hypothetical"}).status_code == 422
+    assert client.put(f"/api/v1/devices/{laptop}/security-profile", headers=auth(alice), json={"controls": {}}).status_code == 422
+    assert states(client.get(f"/api/v1/devices/{laptop}/security-profile", headers=auth(alice)).json())["firewall"] == "disabled"
+    assert client.get(f"/api/v1/devices/{laptop}/security-profile", headers=auth(bob)).status_code == 404
+    assert client.put(f"/api/v1/devices/{laptop}/security-profile", headers=auth(bob), json={"controls": {"firewall": "enabled"}}).status_code == 404
+    assert client.get(f"/api/v1/devices/{laptop}/security-profile").status_code == 401
+
+
+def test_assessments_persist_use_telemetry_and_are_owner_scoped() -> None:
+    alice, bob = register("assess-owner@example.com"), register("assess-other@example.com")
+    device = new_device(alice, "Workstation")
+    secure = {key: "enabled" for key in ("mfa", "os_updates", "endpoint_protection", "firewall", "disk_encryption", "screen_lock")}
+    client.put(f"/api/v1/devices/{device}/security-profile", headers=auth(alice), json={"controls": secure})
+
+    first = client.post(f"/api/v1/devices/{device}/assessments", headers=auth(alice))
+    assert first.status_code == 201
+    body = first.json()
+    # Controls verified, behaviour unknown: (12 + 6) x 0.5 = 9.
+    assert body["risk_score"] == 9 and body["coverage"] == 82
+    assert {f["rule"] for f in body["findings"]} == {"auth_activity_unknown", "network_activity_unknown"}
+
+    client.post(f"/api/v1/devices/{device}/telemetry", headers=auth(alice), json={"event_type": "auth_failure", "payload": {"count": 12, "source": "synthetic_demo"}})
+    client.post(f"/api/v1/devices/{device}/telemetry", headers=auth(alice), json={"event_type": "network_summary", "payload": {"source": "synthetic_demo"}})
+    second = client.post(f"/api/v1/devices/{device}/assessments", headers=auth(alice)).json()
+    auth_signal = next(s for s in second["signals"] if s["key"] == "auth_activity")
+    assert auth_signal["state"] == "high" and auth_signal["source"] == "synthetic_demo" and "12 failed" in auth_signal["evidence"]
+    assert second["risk_score"] == 12 and second["coverage"] == 100
+
+    history = client.get(f"/api/v1/devices/{device}/assessments", headers=auth(alice)).json()
+    assert [item["id"] for item in history] == [second["id"], body["id"]]
+    assert history[0]["findings"] == second["findings"]
+    assert client.get(f"/api/v1/devices/{device}/assessments", headers=auth(bob)).status_code == 404
+    assert client.post(f"/api/v1/devices/{device}/assessments", headers=auth(bob)).status_code == 404
+    assert client.post(f"/api/v1/devices/{device}/assessments").status_code == 401
+
+
+def test_device_simulation_compares_without_mutating_profile() -> None:
+    alice, bob = register("whatif-owner@example.com"), register("whatif-other@example.com")
+    device = new_device(alice, "Whatif")
+    client.put(f"/api/v1/devices/{device}/security-profile", headers=auth(alice),
+               json={"controls": {"mfa": "disabled", "firewall": "disabled", "os_updates": "enabled", "endpoint_protection": "enabled", "disk_encryption": "unknown", "screen_lock": "enabled"}})
+    before_profile = client.get(f"/api/v1/devices/{device}/security-profile", headers=auth(alice)).json()
+    baseline = client.post("/api/v1/risk/assess", headers=auth(alice), json={"asset_id": "x", "device_id": device}).json()
+
+    created = client.post("/api/v1/simulations", headers=auth(alice), json={"device_id": device, "proposed_controls": {"mfa": "enabled", "disk_encryption": "enabled"}})
+    assert created.status_code == 201
+    sim = created.json()
+    assert sim["before_risk_score"] == baseline["risk_score"]
+    assert sim["after_risk_score"] < sim["before_risk_score"]
+    assert sim["risk_delta"] == sim["after_risk_score"] - sim["before_risk_score"]
+    assert sim["after_security_score"] == 100 - sim["after_risk_score"]
+    assert set(sim["removed_findings"]) == {"mfa_disabled", "disk_encryption_unknown"}
+    assert {c["key"] for c in sim["changed_signals"]} == {"mfa", "disk_encryption"}
+    assert sim["proposed"]["risk_score"] == sim["after_risk_score"] and sim["baseline"]["risk_score"] == sim["before_risk_score"]
+    # Same engine: scoring the proposed state as a real profile yields the same number.
+    proposed_direct = client.post("/api/v1/risk/assess", headers=auth(alice), json={"asset_id": "x", "device_id": device, "controls": {"mfa": "enabled", "disk_encryption": "enabled"}}).json()
+    assert proposed_direct["risk_score"] == sim["after_risk_score"]
+    # Stored configuration unchanged.
+    assert states(client.get(f"/api/v1/devices/{device}/security-profile", headers=auth(alice)).json()) == states(before_profile)
+
+    history = client.get(f"/api/v1/simulations?device_id={device}", headers=auth(alice)).json()
+    assert history[0]["id"] == sim["id"] and history[0]["changed_signals"] == sim["changed_signals"]
+    assert client.post("/api/v1/simulations", headers=auth(bob), json={"device_id": device, "proposed_controls": {"mfa": "enabled"}}).status_code == 404
+    assert client.post("/api/v1/simulations", headers=auth(alice), json={"device_id": device, "proposed_controls": {"auth_activity": "normal"}}).status_code == 422
+    assert client.post("/api/v1/simulations", headers=auth(alice), json={"device_id": device, "proposed_controls": {"mfa": "sometimes"}}).status_code == 422

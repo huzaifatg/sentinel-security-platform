@@ -1,5 +1,4 @@
 import json
-from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, status
@@ -12,10 +11,29 @@ from sqlalchemy.orm import Session
 from .auth import create_access_token, get_current_user, hash_password, verify_password
 from .config import get_settings
 from .database import Base, engine, get_db
-from .models import AnomalyEvent, Device, SimulationRecord, TelemetryEvent, User
+from .models import AnomalyEvent, Device, RiskAssessmentRecord, SimulationRecord, TelemetryEvent, User
 from .schemas import DeviceCreate, DeviceRead, TelemetryCreate, TelemetryRead, Token, UserCreate, UserRead
-from .risk import assess
-from .risk_schemas import RiskAssessmentRead, RiskAssessmentRequest
+from .risk import (
+    LEGACY_CHANGE_MAP,
+    METHODOLOGY_VERSION,
+    Assessment,
+    SignalInput,
+    SignalState,
+    SignalValidationError,
+    apply_overrides,
+    compare,
+    evaluate,
+    legacy_inputs,
+    methodology,
+)
+from .risk_schemas import (
+    RiskAssessmentRead,
+    RiskAssessmentRequest,
+    SecurityProfileRead,
+    SecurityProfileUpdate,
+    StoredAssessmentRead,
+)
+from .assessment_service import device_inputs, profile_payload, update_controls
 from .anomaly import FEATURE_NAMES, ModelUnavailableError, infer, train_model
 from .anomaly_schemas import AnomalyEventCreate, AnomalyEventRead, AnomalyModelTrainRead, AnomalyModelTrainRequest
 from .simulation_schemas import SimulationRead, SimulationRequest
@@ -120,17 +138,79 @@ def list_telemetry(device_id: int, user: User = Depends(get_current_user), db: S
     return [TelemetryRead(id=e.id, device_id=e.device_id, event_type=e.event_type, payload=json.loads(e.payload), observed_at=e.observed_at) for e in events]
 
 
+@app.get("/api/v1/risk/methodology")
+def risk_methodology() -> dict:
+    """Public, static description of the scoring formula, weights and thresholds."""
+    return methodology()
+
+
+def _validation_error(exc: SignalValidationError) -> HTTPException:
+    return HTTPException(status_code=422, detail=str(exc))
+
+
 @app.post("/api/v1/risk/assess", response_model=RiskAssessmentRead)
-def assess_risk(payload: RiskAssessmentRequest, user: User = Depends(get_current_user)) -> RiskAssessmentRead:
-    risk_score, findings = assess(payload.asset_id, payload.signals)
-    from .risk import severity_for
-    severity = severity_for(risk_score)
-    return RiskAssessmentRead(
-        risk_score=risk_score,
-        security_score=100 - risk_score,
-        severity=severity,
-        findings=[asdict(finding) for finding in findings],
-    )
+def assess_risk(payload: RiskAssessmentRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    """Ad-hoc, non-persisted assessment using the same engine as stored assessments and simulations."""
+    inputs: dict[str, SignalInput] = {}
+    if payload.device_id is not None:
+        inputs, _ = device_inputs(db, user, owned_device(payload.device_id, user, db))
+    inputs.update(legacy_inputs(payload.signals))
+    inputs.update({key: SignalInput(state) for key, state in payload.controls.items()})
+    try:
+        return evaluate(payload.asset_id, inputs).to_dict()
+    except SignalValidationError as exc:
+        raise _validation_error(exc) from exc
+
+
+@app.get("/api/v1/devices/{device_id}/security-profile", response_model=SecurityProfileRead)
+def get_security_profile(device_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    device = owned_device(device_id, user, db)
+    inputs, evidence = device_inputs(db, user, device)
+    return profile_payload(device, inputs, evidence)
+
+
+@app.put("/api/v1/devices/{device_id}/security-profile", response_model=SecurityProfileRead)
+def put_security_profile(device_id: int, payload: SecurityProfileUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    device = owned_device(device_id, user, db)
+    try:
+        update_controls(user, device, payload.controls, payload.source)
+    except SignalValidationError as exc:
+        db.rollback()
+        raise _validation_error(exc) from exc
+    db.commit()
+    db.refresh(device)
+    db.refresh(user)
+    inputs, evidence = device_inputs(db, user, device)
+    return profile_payload(device, inputs, evidence)
+
+
+def _asset_label(device: Device) -> str:
+    return f"device:{device.id}"
+
+
+def _stored_assessment(row: RiskAssessmentRecord) -> dict:
+    return {**json.loads(row.result), "id": row.id, "device_id": row.device_id, "created_at": row.created_at}
+
+
+@app.post("/api/v1/devices/{device_id}/assessments", response_model=StoredAssessmentRead, status_code=201)
+def create_assessment(device_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    device = owned_device(device_id, user, db)
+    inputs, _ = device_inputs(db, user, device)
+    result = evaluate(_asset_label(device), inputs)
+    row = RiskAssessmentRecord(owner_id=user.id, device_id=device.id, methodology_version=result.methodology_version, risk_score=result.risk_score,
+                               security_score=result.security_score, severity=result.severity.value, coverage=result.coverage, result=json.dumps(result.to_dict()))
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _stored_assessment(row)
+
+
+@app.get("/api/v1/devices/{device_id}/assessments", response_model=list[StoredAssessmentRead])
+def list_assessments(device_id: int, limit: int = 10, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[dict]:
+    device = owned_device(device_id, user, db)
+    rows = db.scalars(select(RiskAssessmentRecord).where(RiskAssessmentRecord.device_id == device.id, RiskAssessmentRecord.owner_id == user.id)
+                      .order_by(RiskAssessmentRecord.id.desc()).limit(max(1, min(limit, 50)))).all()
+    return [_stored_assessment(row) for row in rows]
 
 
 MODEL_PATH = Path(settings.model_directory) / "isolation-forest.joblib"
@@ -170,32 +250,55 @@ def list_anomalies(user: User = Depends(get_current_user), db: Session = Depends
     return [AnomalyEventRead(id=e.id, device_id=e.device_id, features=json.loads(e.features), source=e.source, is_anomaly=e.is_anomaly, score=e.score, explanation=e.explanation, model_version=e.model_version, observed_at=e.observed_at) for e in events]
 
 
+def _simulation_read(row: SimulationRecord) -> SimulationRead:
+    details = json.loads(row.details) if row.details else {}
+    return SimulationRead(id=row.id, asset_id=row.asset_id, device_id=row.device_id, before_risk_score=row.before_risk_score, after_risk_score=row.after_risk_score,
+                          before_security_score=row.before_security_score, after_security_score=row.after_security_score,
+                          removed_findings=json.loads(row.removed_findings), added_findings=json.loads(row.added_findings), explanation=row.explanation,
+                          created_at=row.created_at, **details)
+
+
 @app.post("/api/v1/simulations", response_model=SimulationRead, status_code=201)
-def create_simulation(payload: SimulationRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> SimulationRecord:
-    before_score, before_findings = assess(payload.asset_id, payload.current_signals)
-    signals = dict(payload.current_signals)
-    changes = payload.changes.model_dump(exclude_none=True)
-    mapping = {"mfa_enabled": "mfa_disabled", "operating_system_updated": "operating_system_outdated", "firewall_enabled": "firewall_disabled", "disk_encryption_enabled": "disk_encryption_disabled"}
-    for change, rule in mapping.items():
-        if change in changes:
-            signals[rule] = not changes[change]
-    if changes.get("remove_unknown_device"):
-        signals["unknown_device"] = False
-    after_score, after_findings = assess(payload.asset_id, signals)
-    before_rules = {finding.rule for finding in before_findings}
-    after_rules = {finding.rule for finding in after_findings}
-    removed_findings = sorted(before_rules - after_rules)
-    added_findings = sorted(after_rules - before_rules)
-    explanation = "Projected scores are calculated by the same rules as risk assessment and are not persisted as device state."
-    record = SimulationRecord(owner_id=user.id, asset_id=payload.asset_id, before_risk_score=before_score, after_risk_score=after_score, before_security_score=100 - before_score, after_security_score=100 - after_score, removed_findings=json.dumps(removed_findings), added_findings=json.dumps(added_findings), explanation=explanation)
+def create_simulation(payload: SimulationRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> SimulationRead:
+    """Score baseline and a hypothetical copy with the same engine. Stored device controls are never modified."""
+    device: Device | None = None
+    if payload.device_id is not None:
+        device = owned_device(payload.device_id, user, db)
+        baseline_inputs, _ = device_inputs(db, user, device)
+        asset_id = _asset_label(device)
+    else:
+        baseline_inputs = legacy_inputs(payload.current_signals)
+        asset_id = payload.asset_id or ""
+    overrides: dict[str, SignalState | str] = dict(payload.proposed_controls)
+    legacy_changes = payload.changes.model_dump(exclude_none=True)
+    for change, key in LEGACY_CHANGE_MAP.items():
+        if change in legacy_changes and key not in overrides:
+            overrides[key] = SignalState.ENABLED if legacy_changes[change] else SignalState.DISABLED
+    try:
+        proposed_inputs = apply_overrides(baseline_inputs, overrides)
+        baseline: Assessment = evaluate(asset_id, baseline_inputs)
+        proposed: Assessment = evaluate(asset_id, proposed_inputs, observed_at=baseline.assessed_at)
+    except SignalValidationError as exc:
+        raise _validation_error(exc) from exc
+    comparison = compare(baseline, proposed)
+    details = {"methodology_version": METHODOLOGY_VERSION, "risk_delta": comparison["risk_delta"], "security_delta": comparison["security_delta"],
+               "changed_signals": comparison["changed_signals"], "recommendations": comparison["recommendations"],
+               "baseline": baseline.to_dict(), "proposed": proposed.to_dict()}
+    record = SimulationRecord(owner_id=user.id, asset_id=asset_id, device_id=device.id if device else None, before_risk_score=baseline.risk_score,
+                              after_risk_score=proposed.risk_score, before_security_score=baseline.security_score, after_security_score=proposed.security_score,
+                              removed_findings=json.dumps(comparison["resolved_findings"]), added_findings=json.dumps(comparison["introduced_findings"]),
+                              explanation=comparison["explanation"], details=json.dumps(details))
     db.add(record)
     db.commit()
     db.refresh(record)
-    return SimulationRead(id=record.id, asset_id=record.asset_id, before_risk_score=record.before_risk_score, after_risk_score=record.after_risk_score, before_security_score=record.before_security_score, after_security_score=record.after_security_score, removed_findings=removed_findings, added_findings=added_findings, explanation=record.explanation, created_at=record.created_at)
+    return _simulation_read(record)
 
 
 @app.get("/api/v1/simulations", response_model=list[SimulationRead])
-def list_simulations(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[SimulationRead]:
-    rows = db.scalars(select(SimulationRecord).where(SimulationRecord.owner_id == user.id).order_by(SimulationRecord.id.desc())).all()
-    return [SimulationRead(id=row.id, asset_id=row.asset_id, before_risk_score=row.before_risk_score, after_risk_score=row.after_risk_score, before_security_score=row.before_security_score, after_security_score=row.after_security_score, removed_findings=json.loads(row.removed_findings), added_findings=json.loads(row.added_findings), explanation=row.explanation, created_at=row.created_at) for row in rows]
+def list_simulations(device_id: int | None = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[SimulationRead]:
+    query = select(SimulationRecord).where(SimulationRecord.owner_id == user.id)
+    if device_id is not None:
+        query = query.where(SimulationRecord.device_id == device_id)
+    rows = db.scalars(query.order_by(SimulationRecord.id.desc())).all()
+    return [_simulation_read(row) for row in rows]
 

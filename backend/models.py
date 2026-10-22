@@ -11,6 +11,8 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(Text)
+    # Account-level controls (e.g. MFA) as JSON: {key: {state, source, updated_at}}.
+    account_controls: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     devices: Mapped[list["Device"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
 
@@ -21,6 +23,8 @@ class Device(Base):
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(120))
     serial_number: Mapped[str] = mapped_column(String(120), index=True)
+    # Device-level controls as JSON: {key: {state, source, updated_at}}. Missing keys mean "unknown".
+    security_controls: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     owner: Mapped[User] = relationship(back_populates="devices")
     telemetry: Mapped[list["TelemetryEvent"]] = relationship(back_populates="device", cascade="all, delete-orphan")
@@ -52,6 +56,22 @@ class SimulationRecord(Base):
     removed_findings: Mapped[str] = mapped_column(Text)
     added_findings: Mapped[str] = mapped_column(Text)
     explanation: Mapped[str] = mapped_column(Text)
+    device_id: Mapped[int | None] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"), index=True, nullable=True)
+    details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RiskAssessmentRecord(Base):
+    __tablename__ = "risk_assessments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"), index=True)
+    methodology_version: Mapped[str] = mapped_column(String(40))
+    risk_score: Mapped[int] = mapped_column(Integer)
+    security_score: Mapped[int] = mapped_column(Integer)
+    severity: Mapped[str] = mapped_column(String(20))
+    coverage: Mapped[int] = mapped_column(Integer)
+    result: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
