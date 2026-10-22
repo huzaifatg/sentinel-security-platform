@@ -29,7 +29,7 @@ See `ARCHITECTURE.md`, `API_CONTRACT.md`, `PROJECT_STATUS.md`, and `HANDOFF.md` 
 The backend is intended to run as a separate Render Web Service from this repository root. The Next.js app remains the frontend; Render is not used to host the backend inside the Next.js process. Deploy the `v0/phase-1-foundation` branch, which contains the backend and dependency manifest; the historical `main` commit used by the failed deployment does not contain them.
 
 1. In Render, create a **Web Service** connected to this repository and use the repository root (`/`) as the service root.
-2. Use `pip install -r requirements.txt` as the build command.
+2. Use `./render-build.sh` as the build command. It installs dependencies and runs `python -m alembic upgrade head` from the repository root with visible start/success markers; any migration error fails the build. If Render cannot execute the script, use `python -m pip install -r requirements.txt && python -m alembic upgrade head` explicitly.
 3. Use `uvicorn backend.main:app --host 0.0.0.0 --port $PORT` as the start command.
 4. Add these Render environment variables under the backend service: `DATABASE_URL`, `JWT_SECRET`, `JWT_ALGORITHM`, `ACCESS_TOKEN_MINUTES`, and `CORS_ORIGINS`. Set `CORS_ORIGINS` to the deployed Next.js origin, not a browser-facing secret.
 5. Run the first migration from the repository root in a shell using the same environment: `alembic upgrade head`. This is non-destructive for a new database and must complete before claiming PostgreSQL persistence is verified.

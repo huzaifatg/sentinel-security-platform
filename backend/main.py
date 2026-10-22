@@ -5,7 +5,8 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import select
+from sqlalchemy import inspect, select, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from .auth import create_access_token, get_current_user, hash_password, verify_password
@@ -33,7 +34,22 @@ def create_tables_for_local_development() -> None:
 
 @app.get("/api/v1/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "database": "configured" if settings.database_url else "not_configured"}
+    if not settings.database_url:
+        return {"status": "degraded", "database": "not_configured", "connectivity": "not_checked", "schema": "not_checked"}
+
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+            inspector = inspect(connection)
+            schema_ready = inspector.has_table("alembic_version") if not settings.database_url.startswith("sqlite") else all(
+                inspector.has_table(table.name) for table in Base.metadata.sorted_tables
+            )
+            if not schema_ready:
+                return {"status": "degraded", "database": "configured", "connectivity": "ok", "schema": "not_ready"}
+    except SQLAlchemyError:
+        return {"status": "degraded", "database": "configured", "connectivity": "unavailable", "schema": "not_ready"}
+
+    return {"status": "ok", "database": "configured", "connectivity": "ok", "schema": "ready"}
 
 
 @app.post("/api/v1/auth/register", response_model=UserRead, status_code=201)

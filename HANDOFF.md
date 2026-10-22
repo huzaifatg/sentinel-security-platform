@@ -46,6 +46,10 @@ The frontend now includes a complete navigable Sentinel workspace across overvie
 
 The live preview was verified at 1137x813 in dark mode: overview and `/devices` rendered successfully. `npm run typecheck`, `npm run lint`, and `npm run build` all pass. Route coverage is provided by the root page plus the shared catch-all route; no authentication or database claims were added.
 
+## Deployment migration check
+
+Added `render-build.sh` as the explicit Render build command. It changes to the repository root, installs `requirements.txt`, prints migration start/success markers, and runs `python -m alembic upgrade head`; `set -euo pipefail` makes migration failures fail the build without logging connection strings. The health endpoint now performs `SELECT 1` and checks `alembic_version`, reporting `configured`, `connectivity`, and `schema` separately. This improves observability but does not verify the deployed database until Render runs the build against its configured `DATABASE_URL`.
+
 ## Next task
 
 Configure a running PostgreSQL test environment and verify `alembic upgrade head`, persistence, and authentication against it. Do not claim production persistence or a successful production deployment until those checks and a deployment run pass.

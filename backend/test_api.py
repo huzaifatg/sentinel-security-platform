@@ -14,6 +14,13 @@ from backend.main import app
 from backend.risk import assess, severity_for
 
 
+def test_health_reports_sqlite_connectivity_and_schema() -> None:
+    response = TestClient(app).get("/api/v1/health")
+    assert response.status_code == 200
+    assert response.json()["connectivity"] == "ok"
+    assert response.json()["schema"] == "ready"
+
+
 def test_postgresql_urls_select_psycopg3_for_alembic_and_app() -> None:
     database_url = "postgresql://neon_user:pa%25ss@example.neon.tech/sentinel?sslmode=require"
     settings = Settings(database_url=database_url)
