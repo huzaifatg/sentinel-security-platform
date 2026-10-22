@@ -1,5 +1,5 @@
-import { SentinelApp } from '@/components/sentinel-app'
+import { AuthGate } from '@/components/auth-gate'
 
 export default function Home() {
-  return <SentinelApp initialSection="overview" />
+  return <AuthGate initialSection="overview" />
 }

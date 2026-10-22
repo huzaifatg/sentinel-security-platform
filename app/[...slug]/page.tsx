@@ -1,4 +1,4 @@
-import { SentinelApp } from '@/components/sentinel-app'
+import { AuthGate } from '@/components/auth-gate'
 
 type Props = { params: Promise<{ slug: string[] }> }
 
@@ -7,5 +7,5 @@ export default async function CatchAllPage({ params }: Props) {
   const requested = slug.join('/')
   const allowed = ['devices', 'risk-findings', 'digital-twin', 'anomalies', 'simulator', 'activity', 'reports', 'settings']
   const section = allowed.includes(requested) ? requested : 'overview'
-  return <SentinelApp initialSection={section as Parameters<typeof SentinelApp>[0]['initialSection']} />
+  return <AuthGate initialSection={section as Parameters<typeof AuthGate>[0]['initialSection']} />
 }

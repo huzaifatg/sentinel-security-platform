@@ -1,17 +1,15 @@
 'use client'
 
 import { useState } from 'react'
+import { api, ApiError, RiskAssessment } from '@/lib/api'
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000'
 const signalOptions = ['disk_encryption_disabled', 'mfa_disabled', 'firewall_disabled', 'unusual_login'] as const
 
-type Assessment = { risk_score: number; security_score: number; severity: string; findings: Array<{ label: string; evidence: string; recommended_action: string }> }
 
 export function RiskConsole() {
-  const [token, setToken] = useState('')
   const [assetId, setAssetId] = useState('')
   const [signals, setSignals] = useState<Record<string, boolean>>({})
-  const [assessment, setAssessment] = useState<Assessment | null>(null)
+  const [assessment, setAssessment] = useState<RiskAssessment | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -21,12 +19,9 @@ export function RiskConsole() {
     setAssessment(null)
     setLoading(true)
     try {
-      const response = await fetch(`${API_BASE}/api/v1/risk/assess`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ asset_id: assetId, signals }) })
-      const body = await response.json()
-      if (!response.ok) throw new Error(body.detail ?? 'Risk assessment failed')
-      setAssessment(body)
+      setAssessment(await api.assessRisk(assetId, signals))
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to reach the risk service')
+      setError(caught instanceof ApiError ? caught.message : 'Unable to reach the risk service')
     } finally {
       setLoading(false)
     }
@@ -36,7 +31,6 @@ export function RiskConsole() {
     <div className="panel-header"><div><p className="eyebrow">Verified backend assessment</p><h2>Run a risk assessment</h2></div><span className="status-pill">Live API</span></div>
     <p className="muted">Submit an authenticated request to the FastAPI risk engine. Scores and findings below are never fabricated by the dashboard.</p>
     <form onSubmit={submit} className="risk-form">
-      <label>Access token<input value={token} onChange={(event) => setToken(event.target.value)} type="password" required placeholder="Bearer token from /auth/login" /></label>
       <label>Asset ID<input value={assetId} onChange={(event) => setAssetId(event.target.value)} required placeholder="laptop-1" /></label>
       <fieldset><legend>Observed signals</legend>{signalOptions.map((signal) => <label className="check-row" key={signal}><input type="checkbox" checked={Boolean(signals[signal])} onChange={(event) => setSignals((current) => ({ ...current, [signal]: event.target.checked }))} />{signal.replaceAll('_', ' ')}</label>)}</fieldset>
       <button type="submit" disabled={loading}>{loading ? 'Assessing…' : 'Calculate verified score'}</button>
