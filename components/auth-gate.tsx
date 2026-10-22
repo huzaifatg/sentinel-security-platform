@@ -2,9 +2,9 @@
 
 import { FormEvent, useEffect, useState } from 'react'
 import { api, ApiError, clearToken, saveToken, User } from '@/lib/api'
-import { SentinelApp } from '@/components/sentinel-app'
+import { LiveWorkspace } from '@/components/live-workspace'
 
-export function AuthGate({ initialSection }: { initialSection?: Parameters<typeof SentinelApp>[0]['initialSection'] }) {
+export function AuthGate({ initialSection }: { initialSection?: 'overview' | 'devices' | 'risk-findings' | 'digital-twin' | 'anomalies' | 'simulator' | 'activity' | 'reports' | 'settings' }) {
   const [user, setUser] = useState<User | null>(null)
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [email, setEmail] = useState('')
@@ -32,7 +32,7 @@ export function AuthGate({ initialSection }: { initialSection?: Parameters<typeo
   }
 
   if (loading) return <main className="auth-shell"><div className="auth-card"><p className="eyebrow">Sentinel</p><h1>Connecting to your security workspace</h1><p className="muted">Verifying the live FastAPI service…</p></div></main>
-  if (user) return <SentinelApp initialSection={initialSection} />
+  if (user) return <LiveWorkspace initialSection={initialSection as 'overview' | 'devices' | 'anomalies' | 'simulator'} user={user} onLogout={() => { clearToken(); setUser(null) }} />
 
   return <main className="auth-shell"><div className="auth-card">
     <div className="brand auth-brand"><div className="brand-mark">S</div><div><strong>Sentinel</strong><span>Security twin</span></div></div>

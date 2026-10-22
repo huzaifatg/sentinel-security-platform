@@ -5,6 +5,10 @@ export type Token = { access_token: string; token_type: string }
 export type Device = { id: number; owner_id: number; name: string; serial_number: string; created_at: string }
 export type Health = { status: string; database: string; connectivity: string; schema: string }
 export type RiskAssessment = { risk_score: number; security_score: number; severity: string; findings: Array<{ label: string; evidence: string; recommended_action: string }> }
+export type Telemetry = { id: number; device_id: number; event_type: string; payload: Record<string, unknown>; observed_at: string }
+export type AnomalyEvent = { id: number; device_id: number; features: Record<string, number | boolean>; source: string; is_anomaly: boolean; score: number; explanation: string; model_version: string; observed_at: string }
+export type Simulation = { id: number; asset_id: string; before_risk_score: number; after_risk_score: number; before_security_score: number; after_security_score: number; removed_findings: string[]; added_findings: string[]; explanation: string; created_at: string }
+export type ModelTraining = { model_version: string; feature_names: string[]; training_events: number }
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message) }
@@ -37,7 +41,15 @@ export const api = {
     return request<Token>('/api/v1/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body })
   },
   devices: () => request<Device[]>('/api/v1/devices'),
-  assessRisk: (assetId: string, signals: Record<string, boolean>) => request<RiskAssessment>('/api/v1/risk/assess', { method: 'POST', body: JSON.stringify({ asset_id: assetId, signals }) }),
+  createDevice: (name: string, serial_number: string) => request<Device>('/api/v1/devices', { method: 'POST', body: JSON.stringify({ name, serial_number }) }),
+  device: (id: number) => request<Device>(`/api/v1/devices/${id}`),
+  telemetry: (id: number) => request<Telemetry[]>(`/api/v1/devices/${id}/telemetry`),
+  anomalies: () => request<AnomalyEvent[]>('/api/v1/anomalies/events'),
+  trainModel: (events?: Array<Record<string, number | boolean>>) => request<ModelTraining>('/api/v1/anomalies/model/train', { method: 'POST', body: JSON.stringify({ events }) }),
+  simulations: () => request<Simulation[]>('/api/v1/simulations'),
+  createSimulation: (assetId: string, changes: Record<string, boolean>) => request<Simulation>('/api/v1/simulations', { method: 'POST', body: JSON.stringify({ asset_id: assetId, current_signals: {}, changes }) }),
+  assessRisk:
+ (assetId: string, signals: Record<string, boolean>) => request<RiskAssessment>('/api/v1/risk/assess', { method: 'POST', body: JSON.stringify({ asset_id: assetId, signals }) }),
 }
 
 export function saveToken(value: string) { sessionStorage.setItem('sentinel_access_token', value) }
